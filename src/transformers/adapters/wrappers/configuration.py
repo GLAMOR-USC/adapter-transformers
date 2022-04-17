@@ -36,6 +36,7 @@ CONFIG_CLASS_KEYS_MAPPING = {
         "attention_probs_dropout_prob": "dropout_rate",
     },
     "xlm_roberta": {},
+    "vilt": {},
 }
 
 

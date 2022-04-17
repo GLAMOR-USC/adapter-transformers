@@ -115,6 +115,10 @@ _import_structure = {
         "T5AdapterModel",
         "T5ModelWithHeads",
     ],
+    "models.vilt": [
+        "ViltAdapterModel",
+        "ViltModelWithHeads",
+    ],
     "models.xlm_roberta": [
         "XLMRobertaAdapterModel",
         "XLMRobertaModelWithHeads",
@@ -194,6 +198,7 @@ if TYPE_CHECKING:
     from .models.mbart import MBartAdapterModel, MBartModelWithHeads
     from .models.roberta import RobertaAdapterModel, RobertaModelWithHeads
     from .models.t5 import T5AdapterModel, T5ModelWithHeads
+    from .models.vilt import ViltAdapterModel, ViltModelWithHeads
     from .models.xlm_roberta import XLMRobertaAdapterModel, XLMRobertaModelWithHeads
     from .trainer import AdapterTrainer, Seq2SeqAdapterTrainer
     from .training import AdapterArguments, MultiLingAdapterArguments

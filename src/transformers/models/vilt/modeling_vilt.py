@@ -25,6 +25,12 @@ from packaging import version
 from torch import nn
 from torch.nn import CrossEntropyLoss
 
+from ...adapters.composition import adjust_tensors_for_parallel
+from ...adapters.context import ForwardContext
+from ...adapters.mixins.vilt import ViltModelAdaptersMixin, ViltOutputAdaptersMixin, ViltSelfOutputAdaptersMixin
+from ...adapters.model_mixin import ModelWithHeadsAdaptersMixin
+#from ...adapters.prefix_tuning import PrefixTuningShim
+
 from ...activations import ACT2FN
 from ...file_utils import add_start_docstrings, add_start_docstrings_to_model_forward, replace_return_docstrings
 from ...modeling_outputs import (
@@ -383,7 +389,7 @@ class ViltSelfAttention(nn.Module):
 
 
 # Copied from transformers.models.vit.modeling_vit.ViTSelfOutput with ViT->Vilt
-class ViltSelfOutput(nn.Module):
+class ViltSelfOutput(ViltSelfOutputAdaptersMixin, nn.Module):
     """
     The residual connection is defined in ViltLayer instead of here (as is the case with other models), due to the
     layernorm applied before each block.
@@ -391,13 +397,18 @@ class ViltSelfOutput(nn.Module):
 
     def __init__(self, config):
         super().__init__()
+        self.config = config
+
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
+
+        self._init_adapter_modules()
 
     def forward(self, hidden_states, input_tensor):
 
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
+        hidden_states = self.adapter_layer_forward(hidden_states, input_tensor, None)           # No LayerNorm
 
         return hidden_states
 
@@ -455,18 +466,22 @@ class ViltIntermediate(nn.Module):
 
 
 # Copied from transformers.models.vit.modeling_vit.ViTOutput with ViT->Vilt
-class ViltOutput(nn.Module):
+class ViltOutput(ViltOutputAdaptersMixin, nn.Module):
     def __init__(self, config):
         super().__init__()
+        self.config = config
+
         self.dense = nn.Linear(config.intermediate_size, config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
+
+        self._init_adapter_modules()
 
     def forward(self, hidden_states, input_tensor):
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
 
         hidden_states = hidden_states + input_tensor
-
+        hidden_states = self.adapter_layer_forward(hidden_states, input_tensor, None)   # No LayerNorm
         return hidden_states
 
 
@@ -724,7 +739,7 @@ VILT_IMAGES_AND_TEXT_CLASSIFICATION_INPUTS_DOCSTRING = r"""
     "The bare ViLT Model transformer outputting raw hidden-states without any specific head on top.",
     VILT_START_DOCSTRING,
 )
-class ViltModel(ViltPreTrainedModel):
+class ViltModel(ViltModelAdaptersMixin, ViltPreTrainedModel):
     def __init__(self, config, add_pooling_layer=True):
         super().__init__(config)
         self.config = config
@@ -734,6 +749,8 @@ class ViltModel(ViltPreTrainedModel):
 
         self.layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.pooler = ViltPooler(config) if add_pooling_layer else None
+
+        self._init_adapter_modules()
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -754,6 +771,7 @@ class ViltModel(ViltPreTrainedModel):
 
     @add_start_docstrings_to_model_forward(VILT_INPUTS_DOCSTRING)
     @replace_return_docstrings(output_type=BaseModelOutputWithPooling, config_class=_CONFIG_FOR_DOC)
+    @ForwardContext.wrap
     def forward(
         self,
         input_ids=None,
@@ -885,7 +903,7 @@ class ViltPooler(nn.Module):
     """,
     VILT_START_DOCSTRING,
 )
-class ViltForMaskedLM(ViltPreTrainedModel):
+class ViltForMaskedLM(ModelWithHeadsAdaptersMixin, ViltPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
@@ -1055,7 +1073,7 @@ class ViltMLMHead(nn.Module):
     """,
     VILT_START_DOCSTRING,
 )
-class ViltForQuestionAnswering(ViltPreTrainedModel):
+class ViltForQuestionAnswering(ModelWithHeadsAdaptersMixin, ViltPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
@@ -1166,7 +1184,7 @@ class ViltForQuestionAnswering(ViltPreTrainedModel):
     """,
     VILT_START_DOCSTRING,
 )
-class ViltForImageAndTextRetrieval(ViltPreTrainedModel):
+class ViltForImageAndTextRetrieval(ModelWithHeadsAdaptersMixin, ViltPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
@@ -1267,7 +1285,7 @@ class ViltForImageAndTextRetrieval(ViltPreTrainedModel):
     """,
     VILT_IMAGES_AND_TEXT_CLASSIFICATION_INPUTS_DOCSTRING,
 )
-class ViltForImagesAndTextClassification(ViltPreTrainedModel):
+class ViltForImagesAndTextClassification(ModelWithHeadsAdaptersMixin, ViltPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
