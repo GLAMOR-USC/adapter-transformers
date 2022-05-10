@@ -408,7 +408,8 @@ class ViltSelfOutput(ViltSelfOutputAdaptersMixin, nn.Module):
 
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
-        hidden_states = self.adapter_layer_forward(hidden_states, input_tensor, None)           # No LayerNorm
+        residual_input = torch.zeros(hidden_states.shape).to(hidden_states.device)
+        hidden_states = self.adapter_layer_forward(hidden_states, residual_input, None)           # No LayerNorm
 
         return hidden_states
 
@@ -452,15 +453,15 @@ class ViltIntermediate(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.intermediate_size)
-        #if isinstance(config.hidden_act, str):
-        #    self.intermediate_act_fn = ACT2FN[config.hidden_act]
-        #else:
-        #    self.intermediate_act_fn = config.hidden_act
+        if isinstance(config.hidden_act, str):
+            self.intermediate_act_fn = ACT2FN[config.hidden_act]
+        else:
+            self.intermediate_act_fn = config.hidden_act
 
     def forward(self, hidden_states):
 
         hidden_states = self.dense(hidden_states)
-        #hidden_states = self.intermediate_act_fn(hidden_states)
+        hidden_states = self.intermediate_act_fn(hidden_states)
 
         return hidden_states
 
@@ -481,7 +482,8 @@ class ViltOutput(ViltOutputAdaptersMixin, nn.Module):
         hidden_states = self.dropout(hidden_states)
 
         hidden_states = hidden_states + input_tensor
-        hidden_states = self.adapter_layer_forward(hidden_states, input_tensor, None)   # No LayerNorm
+        residual_input = torch.zeros(hidden_states.shape).to(hidden_states.device)
+        hidden_states = self.adapter_layer_forward(hidden_states, residual_input, None)           # No LayerNorm
         return hidden_states
 
 
