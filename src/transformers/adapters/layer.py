@@ -7,7 +7,7 @@ from torch import nn
 from .composition import AdapterCompositionBlock, BatchSplit, Fuse, Parallel, Split, Stack
 from .configuration import AdapterConfig
 from .context import AdapterSetup, ForwardContext
-from .modeling import Adapter, BertFusion, ParallelAdapter
+from .modeling import Adapter, BertFusion, ParallelAdapter, WeightedAdapterComposition
 
 
 class AdapterLayerBase(ABC, nn.Module):
@@ -59,6 +59,7 @@ class AdapterLayer(AdapterLayerBase):
     def _init_adapter_modules(self):
         self.adapters = nn.ModuleDict(dict())
         self.adapter_fusion_layer = nn.ModuleDict(dict())
+        self.adapter_weightedcomposition_layer = nn.ModuleDict(dict())
 
     def add_adapter(self, adapter_name: str, layer_idx: int):
         self.layer_idx = layer_idx
@@ -104,11 +105,17 @@ class AdapterLayer(AdapterLayerBase):
         adapter_names = adapter_names if isinstance(adapter_names, list) else adapter_names.split(",")
         if self.config.adapters.common_config_value(adapter_names, self.location_key):
             fusion_config = self.config.adapters.get_fusion(adapter_names)
-            fusion = BertFusion(
-                fusion_config,
-                self.config.hidden_size,
-                self.config.attention_probs_dropout_prob,
-            )
+            fusion_method = fusion_config.fusion_method
+
+            if fusion_method == 'bert-fusion':
+                fusion = BertFusion(
+                    fusion_config,
+                    self.config.hidden_size,
+                    self.config.attention_probs_dropout_prob,
+                )
+            elif fusion_method == 'weighted-composition':
+                fusion = WeightedAdapterComposition(fusion_config, adapter_names=adapter_names)
+
             fusion.train(self.training)  # make sure training mode is consistent
             self.adapter_fusion_layer[",".join(adapter_names)] = fusion
 
@@ -232,12 +239,18 @@ class AdapterLayer(AdapterLayerBase):
             up_list = torch.stack(up_list)
             up_list = up_list.permute(1, 2, 0, 3)
 
-            hidden_states = self.adapter_fusion_layer[adapter_setup.name](
-                query,
-                up_list,
-                up_list,
-                residual,
-            )
+            if fusion_config.fusion_method == 'bert-fusion':
+                hidden_states = self.adapter_fusion_layer[adapter_setup.name](
+                    query,
+                    up_list,
+                    up_list,
+                    residual,
+                )
+            elif fusion_config.fusion_method == 'weighted-composition':
+                hidden_states = self.adapter_fusion_layer[adapter_setup.name](
+                    up_list,
+                    residual,
+                )
 
         return hidden_states
 

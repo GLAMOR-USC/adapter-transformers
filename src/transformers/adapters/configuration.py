@@ -726,6 +726,7 @@ def build_full_config(adapter_config, model_config, save_id2label=False, **kwarg
 class AdapterFusionConfig(AdapterConfigBase):
     """Base class that models the architecture of an adapter fusion layer."""
 
+    fusion_method: str
     key: bool
     query: bool
     value: bool
@@ -735,6 +736,7 @@ class AdapterFusionConfig(AdapterConfigBase):
     temperature: bool
     value_before_softmax: bool
     value_initialized: str
+    weights_initialization: str
 
     @classmethod
     def load(cls, config: Union[dict, str], **kwargs):
@@ -766,6 +768,7 @@ class StaticAdapterFusionConfig(AdapterFusionConfig):
     Static version of adapter fusion without a value matrix. See https://arxiv.org/pdf/2005.00247.pdf.
     """
 
+    fusion_method: str = 'bert-fusion'
     key: bool = True
     query: bool = True
     value: bool = False
@@ -775,6 +778,7 @@ class StaticAdapterFusionConfig(AdapterFusionConfig):
     temperature: bool = False
     value_before_softmax: bool = True
     value_initialized: str = False
+    weights_initialization: str = None
 
 
 @dataclass(eq=False)
@@ -783,6 +787,7 @@ class DynamicAdapterFusionConfig(AdapterFusionConfig):
     Dynamic version of adapter fusion with a value matrix and regularization. See https://arxiv.org/pdf/2005.00247.pdf.
     """
 
+    fusion_method: str = 'bert-fusion'
     key: bool = True
     query: bool = True
     value: bool = True
@@ -792,6 +797,7 @@ class DynamicAdapterFusionConfig(AdapterFusionConfig):
     temperature: bool = False
     value_before_softmax: bool = True
     value_initialized: str = True
+    weights_initialization: str = None
 
 
 ADAPTERFUSION_CONFIG_MAP = {"static": StaticAdapterFusionConfig(), "dynamic": DynamicAdapterFusionConfig()}
