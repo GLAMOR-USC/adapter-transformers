@@ -19,14 +19,13 @@ import json
 import logging
 import os
 import sys
-import unittest
 from unittest.mock import patch
 
 import torch
 
 from transformers import ViTMAEForPreTraining, Wav2Vec2ForPreTraining
-from transformers.file_utils import is_apex_available
 from transformers.testing_utils import CaptureLogger, TestCasePlus, get_gpu_count, slow, torch_device
+from transformers.utils import is_apex_available
 
 
 SRC_DIRS = [
@@ -45,6 +44,8 @@ SRC_DIRS = [
         "audio-classification",
         "speech-pretraining",
         "image-pretraining",
+        "semantic-segmentation",
+        "dependency-parsing",
     ]
 ]
 sys.path.extend(SRC_DIRS)
@@ -60,12 +61,14 @@ if SRC_DIRS is not None:
     import run_mlm
     import run_ner
     import run_qa as run_squad
+    import run_semantic_segmentation
     import run_seq2seq_qa as run_squad_seq2seq
     import run_speech_recognition_ctc
     import run_speech_recognition_seq2seq
     import run_summarization
     import run_swag
     import run_translation
+    import run_udp
     import run_wav2vec2_pretraining_no_trainer
 
 
@@ -97,11 +100,12 @@ def is_cuda_and_apex_available():
     return is_using_cuda and is_apex_available()
 
 
+stream_handler = logging.StreamHandler(sys.stdout)
+logger.addHandler(stream_handler)
+
+
 class ExamplesTests(TestCasePlus):
     def test_run_glue(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             run_glue.py
@@ -130,9 +134,6 @@ class ExamplesTests(TestCasePlus):
             self.assertGreaterEqual(result["eval_accuracy"], 0.75)
 
     def test_run_clm(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             run_clm.py
@@ -187,9 +188,6 @@ class ExamplesTests(TestCasePlus):
         self.assertIn('"n_head": 2', cl.out)
 
     def test_run_mlm(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             run_mlm.py
@@ -213,9 +211,6 @@ class ExamplesTests(TestCasePlus):
             self.assertLess(result["perplexity"], 42)
 
     def test_run_ner(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         # with so little data distributed training needs more epochs to get the score on par with 0/1 gpu
         epochs = 7 if get_gpu_count() > 1 else 2
 
@@ -247,9 +242,6 @@ class ExamplesTests(TestCasePlus):
             self.assertLess(result["eval_loss"], 0.5)
 
     def test_run_squad(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             run_qa.py
@@ -275,9 +267,6 @@ class ExamplesTests(TestCasePlus):
             self.assertGreaterEqual(result["eval_exact"], 30)
 
     def test_run_squad_seq2seq(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             run_seq2seq_qa.py
@@ -307,9 +296,6 @@ class ExamplesTests(TestCasePlus):
             self.assertGreaterEqual(result["eval_exact"], 30)
 
     def test_run_swag(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             run_swag.py
@@ -333,9 +319,6 @@ class ExamplesTests(TestCasePlus):
             self.assertGreaterEqual(result["eval_accuracy"], 0.8)
 
     def test_generation(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         testargs = ["run_generation.py", "--prompt=Hello", "--length=10", "--seed=42"]
 
         if is_cuda_and_apex_available():
@@ -351,9 +334,6 @@ class ExamplesTests(TestCasePlus):
 
     @slow
     def test_run_summarization(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             run_summarization.py
@@ -382,9 +362,6 @@ class ExamplesTests(TestCasePlus):
 
     @slow
     def test_run_translation(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             run_translation.py
@@ -412,11 +389,7 @@ class ExamplesTests(TestCasePlus):
             result = get_results(tmp_dir)
             self.assertGreaterEqual(result["eval_bleu"], 30)
 
-    @unittest.skip("This is currently broken.")
     def test_run_image_classification(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             run_image_classification.py
@@ -446,9 +419,6 @@ class ExamplesTests(TestCasePlus):
             self.assertGreaterEqual(result["eval_accuracy"], 0.8)
 
     def test_run_speech_recognition_ctc(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             run_speech_recognition_ctc.py
@@ -479,9 +449,6 @@ class ExamplesTests(TestCasePlus):
             self.assertLess(result["eval_loss"], result["train_loss"])
 
     def test_run_speech_recognition_seq2seq(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             run_speech_recognition_seq2seq.py
@@ -512,9 +479,6 @@ class ExamplesTests(TestCasePlus):
             self.assertLess(result["eval_loss"], result["train_loss"])
 
     def test_run_audio_classification(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             run_audio_classification.py
@@ -547,9 +511,6 @@ class ExamplesTests(TestCasePlus):
             self.assertLess(result["eval_loss"], result["train_loss"])
 
     def test_run_wav2vec2_pretraining(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             run_wav2vec2_pretraining_no_trainer.py
@@ -575,11 +536,7 @@ class ExamplesTests(TestCasePlus):
             model = Wav2Vec2ForPreTraining.from_pretrained(tmp_dir)
             self.assertIsNotNone(model)
 
-    @unittest.skip("This is currently broken.")
     def test_run_vit_mae_pretraining(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             run_mae.py
@@ -606,3 +563,57 @@ class ExamplesTests(TestCasePlus):
             run_mae.main()
             model = ViTMAEForPreTraining.from_pretrained(tmp_dir)
             self.assertIsNotNone(model)
+
+    def test_run_semantic_segmentation(self):
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            run_semantic_segmentation.py
+            --output_dir {tmp_dir}
+            --dataset_name huggingface/semantic-segmentation-test-sample
+            --do_train
+            --do_eval
+            --remove_unused_columns False
+            --overwrite_output_dir True
+            --max_steps 10
+            --learning_rate=2e-4
+            --per_device_train_batch_size=2
+            --per_device_eval_batch_size=1
+            --seed 32
+        """.split()
+
+        if is_cuda_and_apex_available():
+            testargs.append("--fp16")
+
+        with patch.object(sys, "argv", testargs):
+            run_semantic_segmentation.main()
+            result = get_results(tmp_dir)
+            self.assertGreaterEqual(result["eval_overall_accuracy"], 0.1)
+
+    def test_run_udp(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            run_udp.py
+            --model_name_or_path bert-base-uncased
+            --do_train
+            --do_eval
+            --task_name en_ewt
+            --use_mock_data
+            --evaluate_on train
+            --per_device_train_batch_size=2
+            --per_device_eval_batch_size=1
+            --learning_rate=5e-4
+            --max_steps=10
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+        """.split()
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            run_udp.main()
+            result = get_results(tmp_dir)
+            self.assertGreaterEqual(result["eval_uas"], 100.0)

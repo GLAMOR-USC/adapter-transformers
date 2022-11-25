@@ -9,6 +9,16 @@ logger = logging.getLogger(__name__)
 # The "layers" attributes in the configs below map from static head module names to flex head module names.
 # In this context, "None" refers to a flex-head layer without weights (e.g. dropout, acts).
 STATIC_TO_FLEX_HEAD_MAP = {
+    # BEIT
+    "BeitForImageClassification": {
+        "config": {
+            "head_type": "image_classification",
+            "layers": 1,
+            "activation_function": None,
+            "use_pooler": True,
+        },
+        "layers": {"classifier"},
+    },
     # BERT
     "BertForSequenceClassification": {
         "config": {
@@ -297,11 +307,133 @@ STATIC_TO_FLEX_HEAD_MAP = {
         },
         "layers": [None, "classifier"],
     },
+    # GPT-J
+    "GPTJForSequenceClassification": {
+        "config": {
+            "head_type": "classification",
+            "layers": 1,
+            "activation_function": None,
+            "bias": False,
+        },
+        "layers": [None, "score"],
+    },
+    "GPTJForCausalLM": {
+        "config": {
+            "head_type": "causal_lm",
+        },
+        "layers": ["lm_head"],
+    },
+    "GPTJForQuestionAnswering": {
+        "config": {
+            "head_type": "question_answering",
+            "layers": 1,
+            "activation_function": None,
+        },
+        "layers": [None, "qa_outputs"],
+    },
     "T5ForConditionalGeneration": {
         "config": {
             "head_type": "seq2seq_lm",
         },
         "layers": ["lm_head"],
+    },
+    "DebertaV2ForSequenceClassification": {
+        "config": {
+            "head_type": "classification",
+            "layers": 2,
+            "activation_function": "gelu",
+            "use_pooler": False,
+        },
+        "layers": [None, "pooler.dense", None, None, "classifier"],
+    },
+    "DebertaV2ForTokenClassification": {
+        "config": {
+            "head_type": "tagging",
+            "layers": 1,
+            "activation_function": None,
+        },
+        "layers": ["dropout", "classifier"],
+    },
+    "DebertaV2ForQuestionAnswering": {
+        "config": {
+            "head_type": "question_answering",
+            "layers": 1,
+            "activation_function": None,
+        },
+        "layers": [None, "qa_outputs"],
+    },
+    "DebertaV2ForMaskedLM": {
+        "config": {
+            "head_type": "masked_lm",
+            "layers": 2,
+            "activation_function": "gelu",
+            "layer_norm": True,
+            "bias": True,
+        },
+        "layers": [
+            "cls.predictions.transform.dense",
+            None,
+            "cls.predictions.transform.LayerNorm",
+            "cls.predictions.decoder",
+        ],
+    },
+    "DebertaV2ForMultipleChoice": {
+        "config": {
+            "head_type": "multiple_choice",
+            "layers": 2,
+            "activation_function": "gelu",
+            "use_pooler": False,
+        },
+        "layers": [None, "pooler.dense", None, None, "classifier"],
+    },
+    "DebertaForSequenceClassification": {
+        "config": {
+            "head_type": "classification",
+            "layers": 2,
+            "activation_function": "gelu",
+            "use_pooler": False,
+        },
+        "layers": [None, "pooler.dense", None, None, "classifier"],
+    },
+    "DebertaForTokenClassification": {
+        "config": {
+            "head_type": "tagging",
+            "layers": 1,
+            "activation_function": None,
+        },
+        "layers": ["dropout", "classifier"],
+    },
+    "DebertaForQuestionAnswering": {
+        "config": {
+            "head_type": "question_answering",
+            "layers": 1,
+            "activation_function": None,
+        },
+        "layers": [None, "qa_outputs"],
+    },
+    "DebertaForMaskedLM": {
+        "config": {
+            "head_type": "masked_lm",
+            "layers": 2,
+            "activation_function": "gelu",
+            "layer_norm": True,
+            "bias": True,
+        },
+        "layers": [
+            "cls.predictions.transform.dense",
+            None,
+            "cls.predictions.transform.LayerNorm",
+            "cls.predictions.decoder",
+        ],
+    },
+    # ViT
+    "ViTForImageClassification": {
+        "config": {
+            "head_type": "image_classification",
+            "layers": 1,
+            "activation_function": None,
+        },
+        "layers": {"classifier"},
     },
 }
 
@@ -317,7 +449,8 @@ def _regex_list_rename_func(k, rename_list):
 def get_head_config_and_rename_list(model_class_name, head_name, label2id, num_labels=None):
     if label2id is None:
         logger.warning(
-            "No valid map of labels in label2id. Falling back to default (num_labels=2). This may cause errors during loading!"
+            "No valid map of labels in label2id. Falling back to default (num_labels=2). This may cause errors during"
+            " loading!"
         )
         label2id = {"LABEL_" + str(i): i for i in range(2)}
     # num_labels is optional (e.g. for regression, when no map given)

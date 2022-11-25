@@ -5,14 +5,19 @@ from transformers import ModelAdaptersMixin
 
 MODELS_WITH_ADAPTERS = [
     "bert",
+    "beit",
     "roberta",
     "xlm_roberta",
     "distilbert",
     "bart",
     "mbart",
     "gpt2",
+    "gptj",
     "encoder_decoder",
     "t5",
+    "deberta",
+    "deberta_v2",
+    "vit",
 ]
 
 IGNORE_NOT_IMPLEMENTING_MIXIN = [

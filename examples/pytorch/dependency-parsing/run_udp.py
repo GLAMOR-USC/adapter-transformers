@@ -76,14 +76,18 @@ class DataTrainingArguments:
     max_seq_length: int = field(
         default=128,
         metadata={
-            "help": "The maximum total input sequence length after tokenization. Sequences longer "
-            "than this will be truncated, sequences shorter will be padded."
+            "help": (
+                "The maximum total input sequence length after tokenization. Sequences longer "
+                "than this will be truncated, sequences shorter will be padded."
+            )
         },
     )
     overwrite_cache: bool = field(
         default=False,
         metadata={"help": "Overwrite the cached training and evaluation sets."},
     )
+    use_mock_data: bool = field(default=False)
+    evaluate_on: str = field(default="validation")
 
 
 def main():
@@ -112,7 +116,8 @@ def main():
         and not training_args.overwrite_output_dir
     ):
         raise ValueError(
-            f"Output directory ({training_args.output_dir}) already exists and is not empty. Use --overwrite_output_dir to overcome."
+            f"Output directory ({training_args.output_dir}) already exists and is not empty. Use"
+            " --overwrite_output_dir to overcome."
         )
 
     # Setup logging
@@ -234,12 +239,20 @@ def main():
     else:
         if adapter_args.load_adapter or adapter_args.load_lang_adapter:
             raise ValueError(
-                "Adapters can only be loaded in adapters training mode."
-                "Use --train_adapter to enable adapter training"
+                "Adapters can only be loaded in adapters training mode.Use --train_adapter to enable adapter training"
             )
 
     # Load and preprocess dataset
-    dataset = load_dataset("universal_dependencies", data_args.task_name)
+    if data_args.use_mock_data:
+        from datasets import Version, load_dataset_builder
+        from datasets.commands.dummy_data import MockDownloadManager
+
+        dataset_builder = load_dataset_builder("universal_dependencies", data_args.task_name)
+        mock_dl_manager = MockDownloadManager("universal_dependencies", dataset_builder.config, Version("2.7.0"))
+        dataset_builder.download_and_prepare(dl_manager=mock_dl_manager, ignore_verifications=True)
+        dataset = dataset_builder.as_dataset()
+    else:
+        dataset = load_dataset("universal_dependencies", data_args.task_name)
     dataset = preprocess_dataset(dataset, tokenizer, labels, data_args, pad_token_id=-1)
 
     # Initialize our Trainer
@@ -250,19 +263,21 @@ def main():
         model=model,
         args=training_args,
         train_dataset=dataset["train"],
-        eval_dataset=dataset["validation"],
+        eval_dataset=dataset[data_args.evaluate_on],
     )
 
     # Training
     if training_args.do_train:
-        trainer.train(
+        train_result = trainer.train(
             model_path=model_args.model_name_or_path if os.path.isdir(model_args.model_name_or_path) else None
         )
+        metrics = train_result.metrics
+
         trainer.save_model()
-        # For convenience, we also re-save the tokenizer to the same directory,
-        # so that you can share your model easily on huggingface.co/models =)
-        if trainer.is_world_process_zero():
-            tokenizer.save_pretrained(training_args.output_dir)
+
+        trainer.log_metrics("train", metrics)
+        trainer.save_metrics("train", metrics)
+        trainer.save_state()
 
     # Evaluation
     results = {}
@@ -271,15 +286,11 @@ def main():
 
         result = trainer.evaluate()
 
-        output_eval_file = os.path.join(training_args.output_dir, "eval_results.txt")
         if trainer.is_world_process_zero():
-            with open(output_eval_file, "w") as writer:
-                logger.info("***** Eval results *****")
-                for key, value in result.items():
-                    logger.info("  %s = %s", key, value)
-                    writer.write("%s = %s\n" % (key, value))
-
             results.update(result)
+
+        trainer.log_metrics("eval", result)
+        trainer.save_metrics("eval", result)
 
     # Predict
     if training_args.do_predict:
