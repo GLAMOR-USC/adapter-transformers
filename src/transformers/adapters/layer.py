@@ -151,14 +151,16 @@ class AdapterLayer(AdapterLayerBase, nn.Module):
             fusion_config = self.config.adapters.get_fusion(adapter_names)
             fusion_method = fusion_config.fusion_method
 
-            if fusion_method == 'bert-fusion':
+            if fusion_method == "bert-fusion":
                 fusion = BertFusion(
                     fusion_config,
                     self.config.hidden_size,
                     self.config.attention_probs_dropout_prob,
                 )
-            elif fusion_method == 'weighted-composition':
+            elif fusion_method == "weighted-composition":
                 fusion = WeightedAdapterComposition(fusion_config, adapter_names=adapter_names)
+            else:
+                raise NotImplementedError
 
             fusion.train(self.training)  # make sure training mode is consistent
             self.adapter_fusion_layer[",".join(adapter_names)] = fusion
@@ -294,23 +296,35 @@ class AdapterLayer(AdapterLayerBase, nn.Module):
             up_list = torch.stack(up_list)
             up_list = up_list.permute(1, 2, 0, 3)
 
-            if fusion_config.fusion_method == 'bert-fusion':
+            if fusion_config.fusion_method == "bert-fusion":
                 fusion_output = self.adapter_fusion_layer[adapter_setup.name](
                     query,
                     up_list,
                     up_list,
                     residual,
+                    output_attentions=context.output_adapter_fusion_attentions,
                 )
-            elif fusion_config.fusion_method == 'weighted-composition':
+            elif fusion_config.fusion_method == "weighted-composition":
                 fusion_output = self.adapter_fusion_layer[adapter_setup.name](
                     up_list,
                     residual,
+                    output_attentions=context.output_adapter_fusion_attentions,
                 )
 
             if context.output_adapter_fusion_attentions:
-                assert fusion_config.fusion_method == 'bert-fusion'
-                hidden_states = fusion_output[0]
-                self._store_fusion_attentions(adapter_setup.name, fusion_output[-1])
+                # assert fusion_config.fusion_method == 'bert-fusion'
+                if fusion_config.fusion_method == "bert-fusion":
+                    hidden_states = fusion_output[0]
+                    self._store_fusion_attentions(adapter_setup.name, fusion_output[-1])
+                elif fusion_config.fusion_method == "weighted-composition":
+                    hidden_states, scaled_weights = fusion_output
+                    # store
+                    attention_cache = context.adapter_fusion_attentions
+
+                    if self.layer_idx not in attention_cache[adapter_setup.name]:
+                        attention_cache[adapter_setup.name][self.layer_idx] = {}
+
+                    attention_cache[adapter_setup.name][self.layer_idx][self.location_key] = scaled_weights
             else:
                 hidden_states = fusion_output
 

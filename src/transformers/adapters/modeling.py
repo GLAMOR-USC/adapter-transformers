@@ -776,18 +776,16 @@ class PHMLayer(nn.Module):
                 parameters["phm_rule"] = phm_rule
         return parameters
 
+
 # Weighted Adapter Composition
+
 
 class WeightedAdapterComposition(nn.Module):
     """
     Implementation of a WeightedAdapterComposition block.
     """
 
-    def __init__(
-        self,
-        config: AdapterFusionConfig,
-        adapter_names: List
-    ):
+    def __init__(self, config: AdapterFusionConfig, adapter_names: List):
         super(WeightedAdapterComposition, self).__init__()
         # if config.hidden_size % config.num_attention_heads != 0:
         #     raise ValueError(
@@ -795,21 +793,22 @@ class WeightedAdapterComposition(nn.Module):
         #         "heads (%d)" % (config.hidden_size, config.num_attention_heads))
         self.config = config
 
-        if config.weights_initialization == 'uniform':
-            unscaled_weights_initialized= torch.normal(mean=0.0, std=0.02, size=(len(adapter_names),))
-        elif config.weights_initialization == 'last_task_centered':
-            unscaled_weights_prevtasks= torch.normal(mean=-3.0, std=0.02, size=(len(adapter_names)-1,))
-            unscaled_weights_lasttask= torch.normal(mean=3.0, std=0.02, size=(1,))
-            unscaled_weights_initialized = torch.cat(
-                (unscaled_weights_prevtasks, unscaled_weights_lasttask), 
-                dim=-1)
+        if config.weights_initialization == "uniform":
+            unscaled_weights_initialized = torch.normal(mean=0.0, std=0.02, size=(len(adapter_names),))
+        elif config.weights_initialization == "last_task_centered":
+            unscaled_weights_prevtasks = torch.normal(mean=-3.0, std=0.02, size=(len(adapter_names) - 1,))
+            unscaled_weights_lasttask = torch.normal(mean=3.0, std=0.02, size=(1,))
+            unscaled_weights_initialized = torch.cat((unscaled_weights_prevtasks, unscaled_weights_lasttask), dim=-1)
         self.unscaled_weights = nn.Parameter(unscaled_weights_initialized)
 
-    def forward(self, x, residual):
-
+    def forward(self, x, residual, output_attentions=False):
         scaled_weights = nn.Softmax(dim=-1)(self.unscaled_weights)
         composed_x = torch.matmul(scaled_weights, x)
         if not self.config["residual_before"]:
             composed_x += residual
 
-        return composed_x
+        if output_attentions:
+            attention_probs = scaled_weights
+            return composed_x, attention_probs
+        else:
+            return composed_x
