@@ -812,3 +812,25 @@ class WeightedAdapterComposition(nn.Module):
             return composed_x, attention_probs
         else:
             return composed_x
+
+class TacoFusionApplied(nn.Module):
+    """
+    Implementation of a TacoFusionApplied block.
+    """
+
+    def __init__(self, config):
+        super(TacoFusionApplied, self).__init__()
+        self.config = config
+
+    def forward(self, x, adapter_weights, residual, output_attentions=False):
+        #import pdb; pdb.set_trace()
+        seq_len = x.shape[1]
+        #expanded_adapter_weights = adapter_weights.unsqueeze(1).expand(-1, seq_len, -1, -1)     # (B, L, 1, N)
+        composed_x = torch.matmul(adapter_weights, x).squeeze(2)    # (B, L, 1, N) x (B, L, N, D) = (B, L, D)
+        if not self.config["residual_before"]:
+            composed_x += residual
+
+        if output_attentions:
+            return composed_x, adapter_weights[0, :, 0]     # (L, N)
+        else:
+            return composed_x

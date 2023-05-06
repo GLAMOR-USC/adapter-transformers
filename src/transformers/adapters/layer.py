@@ -8,7 +8,7 @@ from torch import nn
 from .composition import AdapterCompositionBlock, BatchSplit, Fuse, Parallel, Split, Stack
 from .configuration import AdapterConfig
 from .context import AdapterSetup, ForwardContext
-from .modeling import Adapter, BertFusion, ParallelAdapter, WeightedAdapterComposition
+from .modeling import Adapter, BertFusion, ParallelAdapter, WeightedAdapterComposition, TacoFusionApplied
 
 
 class AdapterLayerBase(ABC):
@@ -159,6 +159,8 @@ class AdapterLayer(AdapterLayerBase, nn.Module):
                 )
             elif fusion_method == "weighted-composition":
                 fusion = WeightedAdapterComposition(fusion_config, adapter_names=adapter_names)
+            elif fusion_method == "taco-fusion":
+                fusion = TacoFusionApplied(fusion_config)
             else:
                 raise NotImplementedError
 
@@ -267,7 +269,7 @@ class AdapterLayer(AdapterLayerBase, nn.Module):
         )
 
         up_list = []
-
+        taco_adapter_weights = []
         for adapter_block in adapter_setup:
             # Case 1: We have a nested stack -> call stack method
             if isinstance(adapter_block, Stack):
@@ -283,6 +285,8 @@ class AdapterLayer(AdapterLayerBase, nn.Module):
                 up = layer_output[2]
                 self._store_gating_score(adapter_block, layer_output[-1])
                 up_list.append(up)
+                if fusion_config.fusion_method == "taco-fusion":
+                    taco_adapter_weights.append(adapter_layer.taco_adapter_weight.unsqueeze(2)) # (B, L, 1)
             # Case 3: nesting other composition blocks is invalid
             elif isinstance(adapter_block, AdapterCompositionBlock):
                 raise ValueError(
@@ -310,13 +314,21 @@ class AdapterLayer(AdapterLayerBase, nn.Module):
                     residual,
                     output_attentions=context.output_adapter_fusion_attentions,
                 )
+            elif fusion_config.fusion_method == "taco-fusion":
+                taco_adapter_weights = torch.stack(taco_adapter_weights, dim=-1)  # (B, L, 1, N)
+                fusion_output = self.adapter_fusion_layer[adapter_setup.name](
+                    up_list,
+                    taco_adapter_weights,
+                    residual,
+                    output_attentions=context.output_adapter_fusion_attentions,
+                )
 
             if context.output_adapter_fusion_attentions:
                 # assert fusion_config.fusion_method == 'bert-fusion'
                 if fusion_config.fusion_method == "bert-fusion":
                     hidden_states = fusion_output[0]
                     self._store_fusion_attentions(adapter_setup.name, fusion_output[-1])
-                elif fusion_config.fusion_method == "weighted-composition":
+                elif fusion_config.fusion_method in ["weighted-composition", "taco-fusion"]:
                     hidden_states, scaled_weights = fusion_output
                     # store
                     attention_cache = context.adapter_fusion_attentions
